@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/pair
 import memo_state/deriver.{type Deriver}
 
@@ -56,12 +57,17 @@ pub fn update_with_effect(
   f: fn(a) -> #(a, c),
 ) -> #(Memo(a, b, c), c) {
   let #(new_state, update_effect) = f(memo.state)
+  use <- bool.guard(when: fast_equals(new_state, memo.state), return: #(
+    memo,
+    update_effect,
+  ))
   let #(deriver, computed, effects) = deriver.update(memo.deriver, new_state)
   let effect = memo.batch_effects([update_effect, ..effects])
   #(Memo(..memo, state: new_state, computed:, deriver:), effect)
 }
 
 pub fn set_state(memo: Memo(a, b, Nil), new_state: a) -> Memo(a, b, Nil) {
+  use <- bool.guard(when: fast_equals(new_state, memo.state), return: memo)
   let #(deriver, computed, _effects) = deriver.update(memo.deriver, new_state)
   Memo(..memo, state: new_state, computed:, deriver:)
 }
@@ -70,6 +76,9 @@ pub fn set_state_with_effect(
   memo: Memo(a, b, c),
   new_state: a,
 ) -> #(Memo(a, b, c), c) {
+  use <- bool.lazy_guard(when: fast_equals(new_state, memo.state), return: fn() {
+    #(memo, memo.batch_effects([]))
+  })
   let #(deriver, computed, effects) = deriver.update(memo.deriver, new_state)
   #(
     Memo(..memo, state: new_state, computed:, deriver:),
@@ -83,4 +92,9 @@ pub fn state(memo: Memo(a, b, c)) -> a {
 
 pub fn computed(memo: Memo(a, b, c)) -> b {
   memo.computed
+}
+
+@external(javascript, "./deriver.ffi.mjs", "shallowEquals")
+fn fast_equals(_a: a, _b: a) -> Bool {
+  False
 }
