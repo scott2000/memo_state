@@ -40,7 +40,7 @@ fn new_helper(
   }
 }
 
-pub fn simple(compute: fn(a) -> b) -> Deriver(a, b, c) {
+pub fn new_simple(compute: fn(a) -> b) -> Deriver(a, b, c) {
   use monoid <- Deriver
   let empty = monoid.mempty
   let deriver = new(fn(input) { #(compute(input), empty) })
@@ -136,7 +136,7 @@ pub fn parameter(f: fn(a) -> b) -> fn(a) -> b {
   f
 }
 
-pub fn finish(
+pub fn start(
   deriver: Deriver(a, b, c),
   monoid: Monoid(c),
 ) -> DeriverState(a, b, c) {
@@ -150,6 +150,16 @@ pub fn update(
   case state.update(input) {
     Unchanged(output:) -> #(state, output, state.monoid.mempty)
     Changed(output:, effect:, next:) -> #(next, output, effect)
+  }
+}
+
+pub fn update_optional(
+  state: DeriverState(a, b, c),
+  input: a,
+) -> #(Option(DeriverState(a, b, c)), b, c) {
+  case state.update(input) {
+    Unchanged(output:) -> #(None, output, state.monoid.mempty)
+    Changed(output:, effect:, next:) -> #(Some(next), output, effect)
   }
 }
 
