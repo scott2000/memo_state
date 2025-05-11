@@ -45,7 +45,8 @@ fn new_helper(
 
 pub fn deriving(output: b) -> Deriver(a, b, c) {
   use _input <- Deriver
-  // Output `Changed` for the first update, then `Unchanged` for all subsequent updates
+  // Output `Changed` for the first update, then `Unchanged` for all subsequent
+  // updates. This is not strictly necessary, but it makes it more consistent.
   Changed(output:, effects: [], next: {
     use _input <- Deriver
     Unchanged(output:)
@@ -108,6 +109,35 @@ fn map2_helper(
   )
 }
 
+pub fn then(left: Deriver(a, b, d), right: Deriver(b, c, d)) -> Deriver(a, c, d) {
+  then_helper(left, right, None)
+}
+
+fn then_helper(
+  left: Deriver(a, b, d),
+  right: Deriver(b, c, d),
+  prev_output: Option(c),
+) -> Deriver(a, c, d) {
+  use input <- Deriver
+  case left.update(input), prev_output {
+    Unchanged(..), Some(output) -> Unchanged(output:)
+    left_deriver_output, _ -> {
+      let #(left_output, left_effects, left_next) =
+        to_changed(left_deriver_output, left)
+      let #(right_output, right_effects, right_next) =
+        to_changed(right.update(left_output), right)
+      // If either `left` or `right` changes, we return `Changed` even though
+      // the output may be the same. This is to ensure we don't do extra work
+      // in `left` on future updates.
+      Changed(
+        output: right_output,
+        effects: list.append(right_effects, left_effects),
+        next: then_helper(left_next, right_next, Some(right_output)),
+      )
+    }
+  }
+}
+
 pub fn add_deriver(
   f: Deriver(a, fn(b) -> c, d),
   arg: Deriver(a, b, d),
@@ -143,6 +173,16 @@ pub fn update_optional(
 type DeriverOutput(output, effect, next) {
   Unchanged(output: output)
   Changed(output: output, effects: List(effect), next: next)
+}
+
+fn to_changed(
+  deriver_output: DeriverOutput(a, b, c),
+  deriver: c,
+) -> #(a, List(b), c) {
+  case deriver_output {
+    Unchanged(output:) -> #(output, [], deriver)
+    Changed(output:, effects:, next:) -> #(output, effects, next)
+  }
 }
 
 fn merge_output(
