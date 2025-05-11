@@ -1,9 +1,10 @@
+import gleam/dynamic.{type Dynamic}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 
 pub opaque type Deriver(input, output, effect) {
   Deriver(
-    update: fn(input) ->
+    update: fn(input, fn(Dynamic, Dynamic) -> Bool) ->
       DeriverOutput(output, effect, Deriver(input, output, effect)),
   )
 }
@@ -21,7 +22,7 @@ pub fn new_with_effect(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
 }
 
 fn new_raw(compute: fn(a) -> #(b, List(c))) -> Deriver(a, b, c) {
-  use input <- Deriver
+  use input, _eq <- Deriver
   let #(output, effects) = compute(input)
   let next = new_helper(input, output, compute)
   Changed(output:, effects:, next:)
@@ -32,8 +33,8 @@ fn new_helper(
   prev_output: b,
   compute: fn(a) -> #(b, List(c)),
 ) -> Deriver(a, b, c) {
-  use input <- Deriver
-  case input == prev_input {
+  use input, eq <- Deriver
+  case eq(dynamic.from(input), dynamic.from(prev_input)) {
     True -> Unchanged(prev_output)
     False -> {
       let #(output, effects) = compute(input)
@@ -44,11 +45,11 @@ fn new_helper(
 }
 
 pub fn deriving(output: b) -> Deriver(a, b, c) {
-  use _input <- Deriver
+  use _input, _eq <- Deriver
   // Output `Changed` for the first update, then `Unchanged` for all subsequent
   // updates. This is not strictly necessary, but it makes it more consistent.
   Changed(output:, effects: [], next: {
-    use _input <- Deriver
+    use _input, _eq <- Deriver
     Unchanged(output:)
   })
 }
@@ -57,8 +58,8 @@ pub fn selecting(
   select: fn(a) -> b,
   deriver: Deriver(b, c, d),
 ) -> Deriver(a, c, d) {
-  use input <- Deriver
-  case deriver.update(select(input)) {
+  use input, eq <- Deriver
+  case deriver.update(select(input), eq) {
     Unchanged(output:) -> Unchanged(output:)
     Changed(output:, effects:, next:) ->
       Changed(output:, effects:, next: selecting(select, next))
@@ -74,8 +75,12 @@ fn map_helper(
   f: fn(b) -> c,
   prev_output: Option(c),
 ) -> Deriver(a, c, d) {
-  use input <- Deriver
-  use output, next <- map_with_default(deriver.update(input), prev_output, f)
+  use input, eq <- Deriver
+  use output, next <- map_with_default(
+    deriver.update(input, eq),
+    prev_output,
+    f,
+  )
   map_helper(next, f, Some(output))
 }
 
@@ -94,8 +99,8 @@ fn map2_helper(
   mapper: fn(#(b, c)) -> d,
   prev_output: Option(d),
 ) -> Deriver(a, d, e) {
-  use input <- Deriver
-  let merged = merge_output(left.update(input), right.update(input))
+  use input, eq <- Deriver
+  let merged = merge_output(left.update(input, eq), right.update(input, eq))
   use output, #(next_left, next_right) <- map_with_default(
     merged,
     prev_output,
@@ -118,14 +123,14 @@ fn then_helper(
   right: Deriver(b, c, d),
   prev_output: Option(c),
 ) -> Deriver(a, c, d) {
-  use input <- Deriver
-  case left.update(input), prev_output {
+  use input, eq <- Deriver
+  case left.update(input, eq), prev_output {
     Unchanged(..), Some(output) -> Unchanged(output:)
     left_deriver_output, _ -> {
       let #(left_output, left_effects, left_next) =
         to_changed(left_deriver_output, left)
       let #(right_output, right_effects, right_next) =
-        to_changed(right.update(left_output), right)
+        to_changed(right.update(left_output, eq), right)
       // If either `left` or `right` changes, we return `Changed` even though
       // the output may be the same. This is to ensure we don't do extra work
       // in `left` on future updates.
@@ -136,6 +141,15 @@ fn then_helper(
       )
     }
   }
+}
+
+pub fn with_equality(
+  deriver: Deriver(a, b, c),
+  equals: fn(Dynamic, Dynamic) -> Bool,
+) -> Deriver(a, b, c) {
+  use input, _eq <- Deriver
+  use next <- map_next(deriver.update(input, equals))
+  with_equality(next, equals)
 }
 
 pub fn add_deriver(
@@ -162,7 +176,7 @@ pub fn update_optional(
   deriver: Deriver(a, b, c),
   input: a,
 ) -> #(Option(Deriver(a, b, c)), b, List(c)) {
-  case deriver.update(input) {
+  case deriver.update(input, shallow_equality) {
     Unchanged(output:) -> #(None, output, [])
     Changed(output:, effects:, next:) -> {
       #(Some(next), output, list.reverse(effects))
@@ -208,16 +222,41 @@ fn merge_output(
 fn map_with_default(
   deriver_output: DeriverOutput(a, c, d),
   unchanged: Option(b),
-  map_output: fn(a) -> b,
-  map_next: fn(b, d) -> e,
+  output_mapper: fn(a) -> b,
+  next_mapper: fn(b, d) -> e,
 ) -> DeriverOutput(b, c, e) {
   case deriver_output, unchanged {
     Unchanged(..), Some(output) -> Unchanged(output:)
-    Unchanged(output:), _ -> Unchanged(output: map_output(output))
+    Unchanged(output:), _ -> Unchanged(output: output_mapper(output))
     Changed(output:, effects:, next:), _ -> {
-      let output = map_output(output)
-      let next = map_next(output, next)
+      let output = output_mapper(output)
+      let next = next_mapper(output, next)
       Changed(output:, effects:, next:)
     }
   }
+}
+
+fn map_next(
+  deriver_output: DeriverOutput(a, b, c),
+  next_mapper: fn(c) -> c,
+) -> DeriverOutput(a, b, c) {
+  case deriver_output {
+    Unchanged(output:) -> Unchanged(output:)
+    Changed(output:, effects:, next:) ->
+      Changed(output:, effects:, next: next_mapper(next))
+  }
+}
+
+@external(javascript, "./deriver.ffi.mjs", "refEquals")
+pub fn reference_equality(a: a, b: a) -> Bool {
+  a == b
+}
+
+@external(javascript, "./deriver.ffi.mjs", "shallowEquals")
+pub fn shallow_equality(a: a, b: a) -> Bool {
+  a == b
+}
+
+pub fn deep_equality(a: a, b: a) -> Bool {
+  a == b
 }

@@ -1,11 +1,12 @@
 import gleam/list
-import gleam/result
+import gleam/option.{None, Some}
+import gleam/pair
 import gleam/string
 import memo_state/deriver
 import memo_state/memo
 
 type Computed {
-  Computed(uppercased: String, lowercased: String, length: Int)
+  Computed(uppercased: String, lowercased: String, length: #(Int, Int))
 }
 
 pub fn main() -> Nil {
@@ -17,25 +18,33 @@ pub fn main() -> Nil {
       Computed(uppercased:, lowercased:, length:)
     })
     |> deriver.add_deriver(deriver.selecting(
-      fn(s) { s |> string.split(" ") |> list.first |> result.unwrap("") },
+      pair.first,
       deriver.new_with_effect(fn(s) { #(string.uppercase(s), ["Uppercased"]) }),
     ))
     |> deriver.add_deriver(deriver.selecting(
-      fn(s) { s |> string.split(" ") |> list.last |> result.unwrap("") },
-      deriver.new_with_effect(fn(s) { #(string.lowercase(s), ["Lowercased"]) }),
+      pair.second,
+      deriver.new_with_effect(fn(s) {
+        #(string.lowercase(option.unwrap(s, "")), ["Lowercased"])
+      }),
     ))
-    |> deriver.add_deriver(deriver.new(string.length))
-    |> memo.from_deriver_with_effect("Test String", list.flatten)
+    |> deriver.add_deriver(
+      deriver.new_with_effect(fn(pair) {
+        let #(a, b) = pair
+        #(#(string.length(a), string.length(option.unwrap(b, ""))), ["Length"])
+      }),
+    )
+    |> memo.from_deriver_with_effect(#("Test", Some("String")), list.flatten)
+  let some_string = Some("String")
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, "Test String")
+  let #(memo, e) = memo.set_state_with_effect(memo, #("Test", Some("String")))
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, "Other String")
+  let #(memo, e) = memo.set_state_with_effect(memo, #("Other", some_string))
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, "Other String")
+  let #(memo, e) = memo.set_state_with_effect(memo, #("Other", some_string))
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, "Other Word")
+  let #(memo, e) = memo.set_state_with_effect(memo, #("Other", None))
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, "Same")
+  let #(memo, e) = memo.set_state_with_effect(memo, #("Same", None))
   echo #(memo.computed(memo), e)
   Nil
 }
