@@ -8,16 +8,16 @@ pub opaque type Deriver(input, output, effect) {
   )
 }
 
-pub fn new(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
-  use input <- new_raw
-  let #(output, effect) = compute(input)
-  #(output, [effect])
-}
-
-pub fn new_simple(compute: fn(a) -> b) -> Deriver(a, b, c) {
+pub fn new(compute: fn(a) -> b) -> Deriver(a, b, c) {
   use input <- new_raw
   let output = compute(input)
   #(output, [])
+}
+
+pub fn new_with_effect(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
+  use input <- new_raw
+  let #(output, effect) = compute(input)
+  #(output, [effect])
 }
 
 fn new_raw(compute: fn(a) -> #(b, List(c))) -> Deriver(a, b, c) {
@@ -45,7 +45,11 @@ fn new_helper(
 
 pub fn deriving(output: b) -> Deriver(a, b, c) {
   use _input <- Deriver
-  Unchanged(output)
+  // Output `Changed` for the first update, then `Unchanged` for all subsequent updates
+  Changed(output:, effects: [], next: {
+    use _input <- Deriver
+    Unchanged(output:)
+  })
 }
 
 pub fn selecting(

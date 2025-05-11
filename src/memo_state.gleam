@@ -18,24 +18,24 @@ pub fn main() -> Nil {
     })
     |> deriver.add_deriver(deriver.selecting(
       fn(s) { s |> string.split(" ") |> list.first |> result.unwrap("") },
-      deriver.new(fn(s) { #(string.uppercase(s), ["Uppercased"]) }),
+      deriver.new_with_effect(fn(s) { #(string.uppercase(s), ["Uppercased"]) }),
     ))
     |> deriver.add_deriver(deriver.selecting(
       fn(s) { s |> string.split(" ") |> list.last |> result.unwrap("") },
-      deriver.new(fn(s) { #(string.lowercase(s), ["Lowercased"]) }),
+      deriver.new_with_effect(fn(s) { #(string.lowercase(s), ["Lowercased"]) }),
     ))
-    |> deriver.add_deriver(deriver.new_simple(string.length))
-    |> memo.from_deriver("Test String", list.flatten)
-  echo #(memo.get_computed(memo), e)
-  let #(memo, e) = memo.set_state(memo, "Test String")
-  echo #(memo.get_computed(memo), e)
-  let #(memo, e) = memo.set_state(memo, "Other String")
-  echo #(memo.get_computed(memo), e)
-  let #(memo, e) = memo.set_state(memo, "Other String")
-  echo #(memo.get_computed(memo), e)
-  let #(memo, e) = memo.set_state(memo, "Other Word")
-  echo #(memo.get_computed(memo), e)
-  let #(memo, e) = memo.set_state(memo, "Same")
-  echo #(memo.get_computed(memo), e)
+    |> deriver.add_deriver(deriver.new(string.length))
+    |> memo.from_deriver_with_effect("Test String", list.flatten)
+  echo #(memo.computed(memo), e)
+  let #(memo, e) = memo.set_state_with_effect(memo, "Test String")
+  echo #(memo.computed(memo), e)
+  let #(memo, e) = memo.set_state_with_effect(memo, "Other String")
+  echo #(memo.computed(memo), e)
+  let #(memo, e) = memo.set_state_with_effect(memo, "Other String")
+  echo #(memo.computed(memo), e)
+  let #(memo, e) = memo.set_state_with_effect(memo, "Other Word")
+  echo #(memo.computed(memo), e)
+  let #(memo, e) = memo.set_state_with_effect(memo, "Same")
+  echo #(memo.computed(memo), e)
   Nil
 }
