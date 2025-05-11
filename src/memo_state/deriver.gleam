@@ -8,13 +8,6 @@ pub opaque type Deriver(input, output, effect) {
   )
 }
 
-pub opaque type DeriverState(input, output, effect) {
-  DeriverState(
-    deriver: Deriver(input, output, effect),
-    batch: fn(List(effect)) -> effect,
-  )
-}
-
 pub fn new(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
   use input <- new_raw
   let #(output, effect) = compute(input)
@@ -123,31 +116,22 @@ pub fn parameter(f: fn(a) -> b) -> fn(a) -> b {
   f
 }
 
-pub fn start(
-  deriver: Deriver(a, b, c),
-  batch_effects: fn(List(c)) -> c,
-) -> DeriverState(a, b, c) {
-  DeriverState(deriver:, batch: batch_effects)
-}
-
 pub fn update(
-  state: DeriverState(a, b, c),
+  deriver: Deriver(a, b, c),
   input: a,
-) -> #(DeriverState(a, b, c), b, c) {
-  let #(next, output, effect) = update_optional(state, input)
-  #(option.unwrap(next, state), output, effect)
+) -> #(Deriver(a, b, c), b, List(c)) {
+  let #(next, output, effect) = update_optional(deriver, input)
+  #(option.unwrap(next, deriver), output, effect)
 }
 
 pub fn update_optional(
-  state: DeriverState(a, b, c),
+  deriver: Deriver(a, b, c),
   input: a,
-) -> #(Option(DeriverState(a, b, c)), b, c) {
-  case state.deriver.update(input) {
-    Unchanged(output:) -> #(None, output, state.batch([]))
+) -> #(Option(Deriver(a, b, c)), b, List(c)) {
+  case deriver.update(input) {
+    Unchanged(output:) -> #(None, output, [])
     Changed(output:, effects:, next:) -> {
-      let next_state = DeriverState(..state, deriver: next)
-      let effect = effects |> list.reverse |> state.batch
-      #(Some(next_state), output, effect)
+      #(Some(next), output, list.reverse(effects))
     }
   }
 }

@@ -1,12 +1,12 @@
 import gleam/pair
-import memo_state/deriver.{type Deriver, type DeriverState}
+import memo_state/deriver.{type Deriver}
 
 pub opaque type Memo(state, computed, effect) {
   Memo(
     state: state,
     computed: computed,
     batch_effects: fn(List(effect)) -> effect,
-    deriver_state: DeriverState(state, computed, effect),
+    deriver: Deriver(state, computed, effect),
   )
 }
 
@@ -29,13 +29,12 @@ pub fn from_deriver(
   initial_state: a,
   batch_effects: fn(List(c)) -> c,
 ) -> #(Memo(a, b, c), c) {
-  let #(deriver_state, computed, effect) =
+  let #(deriver, computed, effects) =
     deriver
-    |> deriver.start(batch_effects)
     |> deriver.update(initial_state)
   #(
-    Memo(state: initial_state, computed:, batch_effects:, deriver_state:),
-    effect,
+    Memo(state: initial_state, computed:, batch_effects:, deriver:),
+    batch_effects(effects),
   )
 }
 
@@ -49,9 +48,10 @@ pub fn from_deriver_simple(
 }
 
 pub fn update(memo: Memo(a, b, c), f: fn(a) -> #(a, c)) -> #(Memo(a, b, c), c) {
-  let #(state, effect_a) = f(memo.state)
-  let #(memo, effect_b) = set_state(memo, state)
-  #(memo, memo.batch_effects([effect_a, effect_b]))
+  let #(new_state, update_effect) = f(memo.state)
+  let #(deriver, computed, effects) = deriver.update(memo.deriver, new_state)
+  let effect = memo.batch_effects([update_effect, ..effects])
+  #(Memo(..memo, state: new_state, computed:, deriver:), effect)
 }
 
 pub fn update_simple(memo: Memo(a, b, Nil), f: fn(a) -> a) -> Memo(a, b, Nil) {
@@ -59,10 +59,11 @@ pub fn update_simple(memo: Memo(a, b, Nil), f: fn(a) -> a) -> Memo(a, b, Nil) {
 }
 
 pub fn set_state(memo: Memo(a, b, c), new_state: a) -> #(Memo(a, b, c), c) {
-  let #(deriver_state, computed, effect) =
-    memo.deriver_state
-    |> deriver.update(new_state)
-  #(Memo(..memo, state: new_state, computed:, deriver_state:), effect)
+  let #(deriver, computed, effects) = deriver.update(memo.deriver, new_state)
+  #(
+    Memo(..memo, state: new_state, computed:, deriver:),
+    memo.batch_effects(effects),
+  )
 }
 
 pub fn set_state_simple(memo: Memo(a, b, Nil), new_state: a) -> Memo(a, b, Nil) {
