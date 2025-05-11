@@ -1,4 +1,3 @@
-import cat/instances/monoid
 import gleam/list
 import gleam/result
 import gleam/string
@@ -26,7 +25,7 @@ pub fn main() -> Nil {
       deriver.new(fn(s) { #(string.lowercase(s), ["Lowercased"]) }),
     ))
     |> deriver.add_deriver(deriver.new_simple(string.length))
-    |> memo.from_deriver("Test String", monoid.list_monoid())
+    |> memo.from_deriver("Test String", list.flatten)
   echo #(memo.get_computed(memo), e)
   let #(memo, e) = memo.set_state(memo, "Test String")
   echo #(memo.get_computed(memo), e)
