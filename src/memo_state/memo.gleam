@@ -41,7 +41,7 @@ pub fn from_deriver_with_effect(
 ) -> #(Memo(a, b, c), c) {
   let #(deriver, computed, effects) =
     deriver
-    |> deriver.update(initial_state)
+    |> deriver.run(initial_state)
   #(
     Memo(state: initial_state, computed:, batch_effects:, deriver:),
     batch_effects(effects),
@@ -61,14 +61,14 @@ pub fn update_with_effect(
     memo,
     update_effect,
   ))
-  let #(deriver, computed, effects) = deriver.update(memo.deriver, new_state)
+  let #(deriver, computed, effects) = deriver.run(memo.deriver, new_state)
   let effect = memo.batch_effects([update_effect, ..effects])
   #(Memo(..memo, state: new_state, computed:, deriver:), effect)
 }
 
 pub fn set_state(memo: Memo(a, b, Nil), new_state: a) -> Memo(a, b, Nil) {
   use <- bool.guard(when: fast_equals(new_state, memo.state), return: memo)
-  let #(deriver, computed, _effects) = deriver.update(memo.deriver, new_state)
+  let #(deriver, computed, _effects) = deriver.run(memo.deriver, new_state)
   Memo(..memo, state: new_state, computed:, deriver:)
 }
 
@@ -79,7 +79,7 @@ pub fn set_state_with_effect(
   use <- bool.lazy_guard(when: fast_equals(new_state, memo.state), return: fn() {
     #(memo, memo.batch_effects([]))
   })
-  let #(deriver, computed, effects) = deriver.update(memo.deriver, new_state)
+  let #(deriver, computed, effects) = deriver.run(memo.deriver, new_state)
   #(
     Memo(..memo, state: new_state, computed:, deriver:),
     memo.batch_effects(effects),
