@@ -28,19 +28,28 @@ pub fn main() -> Nil {
       }),
     ))
     |> deriver.add_deriver(
-      deriver.new_with_effect(fn(pair) {
+      deriver.new(fn(pair) {
         let #(a, b) = pair
-        #(#(string.length(a), string.length(option.unwrap(b, ""))), ["Length"])
-      }),
+        #(string.length(a), string.length(option.unwrap(b, "")))
+      })
+      |> deriver.chain_effect(deriver.selecting(
+        fn(pair) { pair.first(pair) == pair.second(pair) },
+        deriver.effect(fn(equal) {
+          case equal {
+            False -> ["Not equal length"]
+            True -> ["Equal length"]
+          }
+        }),
+      )),
     )
     |> memo.from_deriver_with_effect(#("Test", Some("String")), list.flatten)
   let some_string = Some("String")
   echo #(memo.computed(memo), e)
   let #(memo, e) = memo.set_state_with_effect(memo, #("Test", Some("String")))
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, #("Other", some_string))
+  let #(memo, e) = memo.set_state_with_effect(memo, #("String", some_string))
   echo #(memo.computed(memo), e)
-  let #(memo, e) = memo.set_state_with_effect(memo, #("Other", some_string))
+  let #(memo, e) = memo.set_state_with_effect(memo, #("String", some_string))
   echo #(memo.computed(memo), e)
   let #(memo, e) = memo.set_state_with_effect(memo, #("Other", None))
   echo #(memo.computed(memo), e)

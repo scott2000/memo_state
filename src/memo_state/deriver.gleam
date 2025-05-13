@@ -1,8 +1,9 @@
-//// This module provides a more fine-grained interface for dealing with
-//// memoized data and effects than the `memo_state/memo` module. The `Deriver`
-//// type represents a set of computations and effects which should only be
-//// re-run whenever an input (or part of an input) has changed. See the
-//// package documentation for examples of how to use this module.
+//// This module provides a fine-grained interface for dealing with memoized
+//// data and effects. The `Deriver` type represents a set of computations and
+//// effects which should only be re-run whenever an input (or part of an
+//// input) has changed. While derivers can be used directly using
+//// `deriver.run`, usually it is better to use a `Memo` to maintain the
+//// current state and computed value, ensuring they remain in sync.
 
 import gleam/dynamic.{type Dynamic}
 import gleam/list
@@ -25,38 +26,38 @@ pub opaque type Deriver(input, output, effect) {
 }
 
 /// Create a deriver from a pure function. This function will only be called
-/// when the input changes.
+/// when the input changes. This is analogous to `useMemo` in React.
 ///
 /// # Examples
 ///
 /// ```gleam
 /// let length_deriver: Deriver(String, Int, Nil) =
 ///   deriver.new(fn(str) {
-///     io.println("Computing length of " <> str)
+///     echo "Computing length of " <> str
 ///     string.length(str)
 ///   })
 ///
 /// // Prints "Computing length of ABC"
-/// let #(length_deriver, 3, []) = length_deriver |> deriver.run("ABC")
+/// let memo = memo.from_deriver(length_deriver, "ABC")
+/// memo.computed(memo) // -> 3
 ///
 /// // Doesn't print anything since result is cached
-/// let #(length_deriver, 3, []) = length_deriver |> deriver.run("ABC")
+/// let memo = memo.set_state(memo, "ABC")
+/// memo.computed(memo) // -> 3
 ///
 /// // Prints "Computing length of ABCDEF"
-/// let #(length_deriver, 6, []) = length_deriver |> deriver.run("ABCDEF")
+/// let memo = memo.set_state(memo, "ABCDEF")
+/// memo.computed(memo) // -> 6
 /// ```
 pub fn new(compute: fn(a) -> b) -> Deriver(a, b, c) {
-  use input <- new_raw
-  let output = compute(input)
-  #(output, [])
+  new_raw(fn(input) {
+    let output = compute(input)
+    #(output, [])
+  })
 }
 
 /// Create a deriver from a function that returns an effect in addition to an
 /// output value. This function will only be called when the input changes.
-///
-/// When the deriver is run, it will produce a list of effects produced while
-/// running the deriver. If the input doesn't change, the deriver will return
-/// an empty list of effects.
 ///
 /// The most common use-case for this type of deriver is to produce effects in
 /// a `lustre` update function, but there are no restrictions on what value can
@@ -65,24 +66,62 @@ pub fn new(compute: fn(a) -> b) -> Deriver(a, b, c) {
 /// # Examples
 ///
 /// ```gleam
-/// let length_deriver: Deriver(String, Int, String) =
+/// let length_deriver: Deriver(String, Int, List(String)) =
 ///   deriver.new_with_effect(fn(str) {
-///     #(string.length(str), "Computing length of " <> str)
+///     #(string.length(str), ["Computing length of " <> str])
 ///   })
 ///
-/// let #(length_deriver, 3, ["Computing length of ABC"]) =
-///   length_deriver |> deriver.run("ABC")
+/// let #(memo, effect) =
+///   memo.from_deriver_with_effect(length_deriver, "ABC", list.flatten)
+/// effect              // -> ["Computing length of ABC"]
+/// memo.computed(memo) // -> 3
 ///
-/// let #(length_deriver, 3, []) =
-///   length_deriver |> deriver.run("ABC")
+/// let #(memo, effect) = memo.set_state_with_effect(memo, "ABC")
+/// effect              // -> []
+/// memo.computed(memo) // -> 3
 ///
-/// let #(length_deriver, 6, ["Computing length of ABCDEF"]) =
-///   length_deriver |> deriver.run("ABCDEF")
+/// let #(memo, effect) = memo.set_state_with_effect(memo, "ABCDEF")
+/// effect              // -> ["Computing length of ABCDEF"]
+/// memo.computed(memo) // -> 6
 /// ```
 pub fn new_with_effect(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
-  use input <- new_raw
-  let #(output, effect) = compute(input)
-  #(output, [effect])
+  new_raw(fn(input) {
+    let #(output, effect) = compute(input)
+    #(output, [effect])
+  })
+}
+
+/// Create a deriver which only produces an effect without returning a value.
+/// The effect will only be produced if the input changes. This is analogous
+/// to `useEffect` in React.
+///
+/// The most common use-case for this type of deriver is to produce effects in
+/// a `lustre` update function, but there are no restrictions on what value can
+/// be used as an "effect".
+///
+/// # Examples
+///
+/// ```gleam
+/// let effect_deriver: Deriver(String, Nil, List(String)) =
+///   deriver.effect(fn(str) {
+///     ["Input changed: " <> str]
+///   })
+///
+/// let #(memo, effect) =
+///   memo.from_deriver_with_effect(effect_deriver, "ABC", list.flatten)
+/// effect // -> ["Input changed: ABC"]
+///
+/// let #(memo, effect) = memo.set_state_with_effect(memo, "ABC")
+/// effect // -> []
+///
+/// let #(memo, effect) = memo.set_state_with_effect(memo, "ABCDEF")
+/// effect // -> ["Computing length of ABCDEF"]
+/// ```
+pub fn effect(on_change: fn(a) -> b) -> Deriver(a, Nil, b) {
+  new_raw(fn(input) {
+    let effect = on_change(input)
+    #(Nil, [effect])
+  })
 }
 
 fn new_raw(compute: fn(a) -> #(b, List(c))) -> Deriver(a, b, c) {
@@ -123,8 +162,8 @@ fn new_helper(
 ///     }),
 ///   )
 ///
-/// let #(name_deriver, "JOHN", []) =
-///   name_deriver |> deriver.run(Person(name: "John"))
+/// let memo = memo.from_deriver(name_deriver, Person(name: "Keerthy"))
+/// memo.computed(memo) // -> "KEERTHY"
 /// ```
 pub fn selecting(
   select: fn(a) -> b,
@@ -145,8 +184,8 @@ pub fn selecting(
 ///   deriver.new(string.uppercase)
 ///   |> deriver.map(fn(name) { Person(name:) })
 ///
-/// let #(person_deriver, Person(name: "JOHN"), []) =
-///   person_deriver |> deriver.run("John")
+/// let memo = memo.from_deriver(person_deriver, "Keerthy")
+/// memo.computed(memo) // -> Person(name: "KEERTHY")
 /// ```
 pub fn map(deriver: Deriver(a, b, d), map: fn(b) -> c) -> Deriver(a, c, d) {
   map_helper(deriver, map, None)
@@ -182,8 +221,8 @@ fn map_helper(
 ///     pair.new,
 ///   )
 ///
-/// let #(pair_deriver, #("WIBBLE", 6), []) =
-///   pair_deriver |> deriver.run("Wibble")
+/// let memo = memo.from_deriver(pair_deriver, "Wibble")
+/// memo.computed(memo) // -> #("WIBBLE", 6)
 /// ```
 pub fn map2(
   left: Deriver(a, b, e),
@@ -225,8 +264,12 @@ fn map2_helper(
 ///   deriver.new(fn(x) { x * x })
 ///   |> deriver.chain(deriver.new(fn(x) { x - 1 }))
 ///
-/// let #(squared_minus_one_deriver, 63, []) =
-///   squared_minus_one_deriver |> deriver.run(8)
+/// let memo = memo.from_deriver(squared_minus_one_deriver, 8)
+/// memo.computed(memo) // -> 63
+///
+/// // Recomputes -8 * -8 = 64, but uses cached 64 - 1 = 63
+/// let memo = memo.set_state(memo, -8)
+/// memo.computed(memo) // -> 63
 /// ```
 pub fn chain(
   first: Deriver(a, b, d),
@@ -258,6 +301,136 @@ fn chain_helper(
       )
     }
   }
+}
+
+/// Add an effect after another deriver. The first deriver's output will be
+/// passed as the input to the effect deriver, unlike `deriver.add_effect`.
+///
+/// # Examples
+///
+/// ```gleam
+/// let length_deriver: Deriver(String, Int, List(String)) =
+///   deriver.new(string.length)
+///   |> deriver.chain_effect(deriver.effect(fn(length) {
+///     ["Length is " <> int.to_string(length)]
+///   }))
+///
+/// let #(memo, effect) =
+///   memo.from_deriver_with_effect(length_deriver, "ABC", list.flatten)
+/// effect              // -> ["Length is 3"]
+/// memo.computed(memo) // -> 3
+///
+/// let #(memo, effect) = memo.set_state_with_effect(memo, "DEF")
+/// effect              // -> []
+/// memo.computed(memo) // -> 3
+///
+/// let #(memo, effect) = memo.set_state_with_effect(memo, "ABCDEF")
+/// effect              // -> ["Length is 6"]
+/// memo.computed(memo) // -> 6
+/// ```
+pub fn chain_effect(
+  deriver: Deriver(a, b, c),
+  effect_deriver: Deriver(b, Nil, c),
+) -> Deriver(a, b, c) {
+  use input, eq <- Deriver
+  case deriver.update(input, eq) {
+    Unchanged(..) as result -> result
+    Changed(output:, effects:, next:) -> {
+      let #(effect_next, Nil, extra_effects) =
+        unwrap_output(effect_deriver.update(output, eq), effect_deriver)
+      Changed(
+        output:,
+        effects: list.append(extra_effects, effects),
+        next: chain_effect(next, effect_next),
+      )
+    }
+  }
+}
+
+/// Wraps a constructor function to be chained with `deriver.add_deriver`.
+/// See the documentation of `deriver.add_deriver` for examples.
+pub fn deriving(output: fn(b) -> c) -> Deriver(a, fn(b) -> c, d) {
+  use _input, _eq <- Deriver
+  // Output `Changed` for the first update, then `Unchanged` for all subsequent
+  // updates. This is not strictly necessary, but it makes it more consistent.
+  Changed(output:, effects: [], next: {
+    use _input, _eq <- Deriver
+    Unchanged(output:)
+  })
+}
+
+/// Helper function to create a constructor function for `deriver.deriving`.
+/// See the documentation of `deriver.add_deriver` for examples.
+pub fn parameter(f: fn(a) -> b) -> fn(a) -> b {
+  f
+}
+
+/// Along with `deriver.deriving`, this function can be used to build a
+/// computed result from a chain of multiple derivers.
+///
+/// # Examples
+///
+/// ```gleam
+/// let deriver: Deriver(List(Int), Computed, Nil) =
+///   deriver.deriving({
+///     use squared <- deriver.parameter
+///     use doubled <- deriver.parameter
+///     Computed(squared:, doubled:)
+///   })
+///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * x })))
+///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * 2 })))
+///
+/// let memo = memo.from_deriver(deriver, [1, 2, 3])
+/// memo.computed(memo) // -> Computed(squared: [1, 4, 9], doubled: [2, 4, 6])
+/// ```
+pub fn add_deriver(
+  constructor: Deriver(a, fn(b) -> c, d),
+  arg: Deriver(a, b, d),
+) -> Deriver(a, c, d) {
+  use constructor, arg <- map2(constructor, arg)
+  constructor(arg)
+}
+
+/// Add an effect to an existing deriver. The effect deriver will take the same
+/// input as the first deriver, unlike `deriver.chain_effect`.
+///
+/// ```gleam
+/// let deriver: Deriver(List(Int), Computed, List(String)) =
+///   deriver.deriving({
+///     use squared <- deriver.parameter
+///     use doubled <- deriver.parameter
+///     Computed(squared:, doubled:)
+///   })
+///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * x })))
+///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * 2 })))
+///   |> deriver.add_effect(
+///     deriver.selecting(
+///       fn(list) { result.unwrap(list.first(list), 0) },
+///       deriver.effect(fn(first) {
+///         ["First element: " <> int.to_string(first)]
+///       }),
+///     ),
+///   )
+///
+/// let #(memo, effect) =
+///   memo.from_deriver_with_effect(deriver, [1, 2, 3], list.flatten)
+/// effect              // -> ["First element: 1"]
+/// memo.computed(memo) // -> Computed(squared: [1, 4, 9], doubled: [2, 4, 6])
+///
+/// let #(memo, effect) = memo.set_state_with_effect(deriver, [1, 2, 4, 8])
+/// effect              // -> []
+/// memo.computed(memo) // -> Computed(squared: [1, 4, 16, 64], doubled: [2, 4, 8, 16])
+///
+/// let #(memo, effect) = memo.set_state_with_effect(deriver, [5])
+/// effect              // -> ["First element: 5"]
+/// memo.computed(memo) // -> Computed(squared: [25], doubled: [10])
+/// ```
+pub fn add_effect(
+  deriver: Deriver(a, b, c),
+  effect_deriver: Deriver(a, Nil, c),
+) -> Deriver(a, b, c) {
+  use result, Nil <- map2(deriver, effect_deriver)
+  result
 }
 
 /// Use a custom function to check for input changes within this deriver. The
@@ -308,50 +481,6 @@ pub fn with_shallow_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
 /// implemented natively with Gleam's `==` operator.
 pub fn with_deep_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
   with_custom_equality(deriver, deep_equality)
-}
-
-/// Wraps a constructor function to be chained with `deriver.add_deriver`.
-/// See the documentation of `deriver.add_deriver` for examples.
-pub fn deriving(output: fn(b) -> c) -> Deriver(a, fn(b) -> c, d) {
-  use _input, _eq <- Deriver
-  // Output `Changed` for the first update, then `Unchanged` for all subsequent
-  // updates. This is not strictly necessary, but it makes it more consistent.
-  Changed(output:, effects: [], next: {
-    use _input, _eq <- Deriver
-    Unchanged(output:)
-  })
-}
-
-/// Helper function to create a constructor function for `deriver.deriving`.
-/// See the documentation of `deriver.add_deriver` for examples.
-pub fn parameter(f: fn(a) -> b) -> fn(a) -> b {
-  f
-}
-
-/// Along with `deriver.deriving`, this function can be used to build a
-/// computed result from a chain of multiple derivers.
-///
-/// # Examples
-///
-/// ```gleam
-/// let deriver: Deriver(List(Int), Computed, Nil) =
-///   deriver.deriving({
-///     use squared <- deriver.parameter
-///     use doubled <- deriver.parameter
-///     Computed(squared:, doubled:)
-///   })
-///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * x })))
-///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * 2 })))
-///
-/// let #(deriver, output, []) = deriver |> deriver.run([1, 2, 3])
-/// output // -> Computed(squared: [1, 4, 9], doubled: [2, 4, 6])
-/// ```
-pub fn add_deriver(
-  constructor: Deriver(a, fn(b) -> c, d),
-  arg: Deriver(a, b, d),
-) -> Deriver(a, c, d) {
-  use constructor, arg <- map2(constructor, arg)
-  constructor(arg)
 }
 
 /// Run a deriver, producing an updated deriver, an output value, and a list of
