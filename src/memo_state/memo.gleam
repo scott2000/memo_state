@@ -11,20 +11,32 @@ pub opaque type Memo(state, computed, effect) {
   )
 }
 
+/// Create a `Memo` based on an initial state and a function to compute.
+/// This is a shorthand for `deriver.new(compute) |> memo.from_deriver(state)`.
+///
+/// # Examples
+///
+/// ```gleam
+/// let memo = memo.new(0, fn(x) { x * x })
+/// memo.state(memo)    // -> 0
+/// memo.computed(memo) // -> 0
+///
+/// let memo = memo.set_state(memo, 12)
+/// memo.state(memo)    // -> 12
+/// memo.computed(memo) // -> 144
+///
+/// let memo = memo.update(memo, divide(_, 2))
+/// memo.state(memo)    // -> 6
+/// memo.computed(memo) // -> 36
+/// ```
 pub fn new(initial_state: a, compute: fn(a) -> b) -> Memo(a, b, Nil) {
   deriver.new(compute)
   |> from_deriver(initial_state)
 }
 
-pub fn new_with_effect(
-  initial_state: a,
-  batch_effects: fn(List(c)) -> c,
-  compute: fn(a) -> #(b, c),
-) -> #(Memo(a, b, c), c) {
-  deriver.new_with_effect(compute)
-  |> from_deriver_with_effect(initial_state, batch_effects)
-}
-
+/// Create a `Memo` based on a deriver. Derivers allow combining multiple
+/// computations together, with each computation cached separately. See the
+/// `memo_state/deriver` module for more information.
 pub fn from_deriver(
   deriver: Deriver(a, b, Nil),
   initial_state: a,
@@ -34,6 +46,11 @@ pub fn from_deriver(
   |> pair.first
 }
 
+/// Create a `Memo` based on a deriver which can return an effect value.
+///
+/// The most common use-case for this type of `Memo` is to produce effects in
+/// a `lustre` update function, but there are no restrictions on what value can
+/// be used as an "effect".
 pub fn from_deriver_with_effect(
   deriver: Deriver(a, b, c),
   initial_state: a,
