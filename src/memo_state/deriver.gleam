@@ -49,7 +49,7 @@ pub opaque type Deriver(input, output, effect) {
 /// let memo = memo.set_state(memo, "ABCDEF")
 /// memo.computed(memo) // -> 6
 /// ```
-pub fn new(compute: fn(a) -> b) -> Deriver(a, b, c) {
+pub fn new(compute: fn(input) -> output) -> Deriver(input, output, effect) {
   new_raw(fn(input) {
     let output = compute(input)
     #(output, [])
@@ -84,7 +84,9 @@ pub fn new(compute: fn(a) -> b) -> Deriver(a, b, c) {
 /// effect              // -> ["Computing length of ABCDEF"]
 /// memo.computed(memo) // -> 6
 /// ```
-pub fn new_with_effect(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
+pub fn new_with_effect(
+  compute: fn(input) -> #(output, effect),
+) -> Deriver(input, output, effect) {
   new_raw(fn(input) {
     let #(output, effect) = compute(input)
     #(output, [effect])
@@ -117,14 +119,16 @@ pub fn new_with_effect(compute: fn(a) -> #(b, c)) -> Deriver(a, b, c) {
 /// let #(memo, effect) = memo.set_state_with_effect(memo, "ABCDEF")
 /// effect // -> ["Computing length of ABCDEF"]
 /// ```
-pub fn effect(on_change: fn(a) -> b) -> Deriver(a, Nil, b) {
+pub fn effect(on_change: fn(input) -> effect) -> Deriver(input, Nil, effect) {
   new_raw(fn(input) {
     let effect = on_change(input)
     #(Nil, [effect])
   })
 }
 
-fn new_raw(compute: fn(a) -> #(b, List(c))) -> Deriver(a, b, c) {
+fn new_raw(
+  compute: fn(input) -> #(output, List(effect)),
+) -> Deriver(input, output, effect) {
   use input, _eq <- Deriver
   let #(output, effects) = compute(input)
   let next = new_helper(input, output, compute)
@@ -132,10 +136,10 @@ fn new_raw(compute: fn(a) -> #(b, List(c))) -> Deriver(a, b, c) {
 }
 
 fn new_helper(
-  prev_input: a,
-  prev_output: b,
-  compute: fn(a) -> #(b, List(c)),
-) -> Deriver(a, b, c) {
+  prev_input: input,
+  prev_output: output,
+  compute: fn(input) -> #(output, List(effect)),
+) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
   case eq(dynamic.from(input), dynamic.from(prev_input)) {
     True -> Unchanged(prev_output)
@@ -166,9 +170,9 @@ fn new_helper(
 /// memo.computed(memo) // -> "KEERTHY"
 /// ```
 pub fn selecting(
-  select: fn(a) -> b,
-  deriver: Deriver(b, c, d),
-) -> Deriver(a, c, d) {
+  select: fn(input) -> selected,
+  deriver: Deriver(selected, output, effect),
+) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
   use next <- map_next(deriver.update(select(input), eq))
   selecting(select, next)
@@ -187,15 +191,18 @@ pub fn selecting(
 /// let memo = memo.from_deriver(person_deriver, "Keerthy")
 /// memo.computed(memo) // -> Person(name: "KEERTHY")
 /// ```
-pub fn map(deriver: Deriver(a, b, d), map: fn(b) -> c) -> Deriver(a, c, d) {
+pub fn map(
+  deriver: Deriver(input, a, effect),
+  map: fn(a) -> output,
+) -> Deriver(input, output, effect) {
   map_helper(deriver, map, None)
 }
 
 fn map_helper(
-  deriver: Deriver(a, b, d),
-  map: fn(b) -> c,
-  prev_output: Option(c),
-) -> Deriver(a, c, d) {
+  deriver: Deriver(input, a, effect),
+  map: fn(a) -> output,
+  prev_output: Option(output),
+) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
   use output, next <- map_with_default(
     deriver.update(input, eq),
@@ -225,20 +232,20 @@ fn map_helper(
 /// memo.computed(memo) // -> #("WIBBLE", 6)
 /// ```
 pub fn map2(
-  left: Deriver(a, b, e),
-  right: Deriver(a, c, e),
-  map: fn(b, c) -> d,
-) -> Deriver(a, d, e) {
-  let mapper = fn(pair: #(b, c)) -> d { map(pair.0, pair.1) }
+  left: Deriver(input, a, effect),
+  right: Deriver(input, b, effect),
+  map: fn(a, b) -> output,
+) -> Deriver(input, output, effect) {
+  let mapper = fn(pair: #(a, b)) { map(pair.0, pair.1) }
   map2_helper(left, right, mapper, None)
 }
 
 fn map2_helper(
-  left: Deriver(a, b, e),
-  right: Deriver(a, c, e),
-  map: fn(#(b, c)) -> d,
-  prev_output: Option(d),
-) -> Deriver(a, d, e) {
+  left: Deriver(input, a, effect),
+  right: Deriver(input, b, effect),
+  map: fn(#(a, b)) -> output,
+  prev_output: Option(output),
+) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
   let merged = merge_output(left.update(input, eq), right.update(input, eq))
   use output, #(next_left, next_right) <- map_with_default(
@@ -272,17 +279,17 @@ fn map2_helper(
 /// memo.computed(memo) // -> 63
 /// ```
 pub fn chain(
-  first: Deriver(a, b, d),
-  second: Deriver(b, c, d),
-) -> Deriver(a, c, d) {
+  first: Deriver(input, a, effect),
+  second: Deriver(a, output, effect),
+) -> Deriver(input, output, effect) {
   chain_helper(first, second, None)
 }
 
 fn chain_helper(
-  first: Deriver(a, b, d),
-  second: Deriver(b, c, d),
-  prev_output: Option(c),
-) -> Deriver(a, c, d) {
+  first: Deriver(input, a, effect),
+  second: Deriver(a, output, effect),
+  prev_output: Option(output),
+) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
   case first.update(input, eq), prev_output {
     Unchanged(..), Some(output) -> Unchanged(output:)
@@ -329,9 +336,9 @@ fn chain_helper(
 /// memo.computed(memo) // -> 6
 /// ```
 pub fn chain_effect(
-  deriver: Deriver(a, b, c),
-  effect_deriver: Deriver(b, Nil, c),
-) -> Deriver(a, b, c) {
+  deriver: Deriver(input, output, effect),
+  effect_deriver: Deriver(output, Nil, effect),
+) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
   case deriver.update(input, eq) {
     Unchanged(..) as result -> result
@@ -349,7 +356,7 @@ pub fn chain_effect(
 
 /// Wraps a constructor function to be chained with `deriver.add_deriver`.
 /// See the documentation of `deriver.add_deriver` for examples.
-pub fn deriving(output: fn(b) -> c) -> Deriver(a, fn(b) -> c, d) {
+pub fn deriving(output: fn(a) -> b) -> Deriver(input, fn(a) -> b, effect) {
   use _input, _eq <- Deriver
   // Output `Changed` for the first update, then `Unchanged` for all subsequent
   // updates. This is not strictly necessary, but it makes it more consistent.
@@ -384,9 +391,9 @@ pub fn parameter(f: fn(a) -> b) -> fn(a) -> b {
 /// memo.computed(memo) // -> Computed(squared: [1, 4, 9], doubled: [2, 4, 6])
 /// ```
 pub fn add_deriver(
-  constructor: Deriver(a, fn(b) -> c, d),
-  arg: Deriver(a, b, d),
-) -> Deriver(a, c, d) {
+  constructor: Deriver(input, fn(a) -> b, effect),
+  arg: Deriver(input, a, effect),
+) -> Deriver(input, b, effect) {
   use constructor, arg <- map2(constructor, arg)
   constructor(arg)
 }
@@ -426,9 +433,9 @@ pub fn add_deriver(
 /// memo.computed(memo) // -> Computed(squared: [25], doubled: [10])
 /// ```
 pub fn add_effect(
-  deriver: Deriver(a, b, c),
-  effect_deriver: Deriver(a, Nil, c),
-) -> Deriver(a, b, c) {
+  deriver: Deriver(input, output, effect),
+  effect_deriver: Deriver(input, Nil, effect),
+) -> Deriver(input, output, effect) {
   use result, Nil <- map2(deriver, effect_deriver)
   result
 }
@@ -437,9 +444,9 @@ pub fn add_effect(
 /// function should return `True` if the values are identical, and `False` if
 /// they may be different.
 pub fn with_custom_equality(
-  deriver: Deriver(a, b, c),
+  deriver: Deriver(input, output, effect),
   equals: fn(Dynamic, Dynamic) -> Bool,
-) -> Deriver(a, b, c) {
+) -> Deriver(input, output, effect) {
   use input, _eq <- Deriver
   use next <- map_next(deriver.update(input, equals))
   with_custom_equality(next, equals)
@@ -455,7 +462,9 @@ pub fn with_custom_equality(
 /// the `===` operator. Strings, numbers, booleans, and other primitive types
 /// are compared by value, but all other objects are compared with reference
 /// equality.
-pub fn with_reference_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
+pub fn with_reference_equality(
+  deriver: Deriver(input, output, effect),
+) -> Deriver(input, output, effect) {
   with_custom_equality(deriver, reference_equality)
 }
 
@@ -472,14 +481,18 @@ pub fn with_reference_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
 ///
 /// This means that it is safe to extract multiple values and put them in a
 /// tuple using `deriver.selecting` without causing unnecessary recomputations.
-pub fn with_shallow_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
+pub fn with_shallow_equality(
+  deriver: Deriver(input, output, effect),
+) -> Deriver(input, output, effect) {
   with_custom_equality(deriver, shallow_equality)
 }
 
 /// Use deep equality to check for input changes within this deriver. This can
 /// be inefficient for large values, but it works on all targets since it is
 /// implemented natively with Gleam's `==` operator.
-pub fn with_deep_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
+pub fn with_deep_equality(
+  deriver: Deriver(input, output, effect),
+) -> Deriver(input, output, effect) {
   with_custom_equality(deriver, deep_equality)
 }
 
@@ -489,18 +502,18 @@ pub fn with_deep_equality(deriver: Deriver(a, b, c)) -> Deriver(a, b, c) {
 /// `memo.from_deriver` instead, and then allow `Memo` to handle updating the
 /// deriver as necessary when the state changes.
 pub fn run(
-  deriver: Deriver(a, b, c),
-  input: a,
-) -> #(Deriver(a, b, c), b, List(c)) {
+  deriver: Deriver(input, output, effect),
+  input: input,
+) -> #(Deriver(input, output, effect), output, List(effect)) {
   deriver
   |> run_advanced(input)
   |> unwrap_output(deriver)
 }
 
 fn run_advanced(
-  deriver: Deriver(a, b, c),
-  input: a,
-) -> DeriverOutput(b, c, Deriver(a, b, c)) {
+  deriver: Deriver(input, output, effect),
+  input: input,
+) -> DeriverOutput(output, effect, Deriver(input, output, effect)) {
   case deriver.update(input, shallow_equality) {
     Unchanged(..) as unchanged -> unchanged
     Changed(output:, effects:, next:) ->
@@ -514,9 +527,9 @@ type DeriverOutput(output, effect, next) {
 }
 
 fn unwrap_output(
-  deriver_output: DeriverOutput(a, b, c),
-  deriver: c,
-) -> #(c, a, List(b)) {
+  deriver_output: DeriverOutput(output, effect, deriver),
+  deriver: deriver,
+) -> #(deriver, output, List(effect)) {
   case deriver_output {
     Unchanged(output:) -> #(deriver, output, [])
     Changed(output:, effects:, next:) -> #(next, output, effects)

@@ -18,8 +18,8 @@ pub opaque type Memo(state, computed, effect) {
   )
 }
 
-/// Create a `Memo` based on an initial state and a function to compute.
-/// This is a shorthand for `deriver.new(compute) |> memo.from_deriver(state)`.
+/// Create state `Memo` based on an initial state and state function to compute.
+/// This is state shorthand for `deriver.new(compute) |> memo.from_deriver(state)`.
 ///
 /// # Examples
 ///
@@ -36,12 +36,15 @@ pub opaque type Memo(state, computed, effect) {
 /// memo.state(memo)    // -> 6
 /// memo.computed(memo) // -> 36
 /// ```
-pub fn new(initial_state: a, compute: fn(a) -> b) -> Memo(a, b, Nil) {
+pub fn new(
+  initial_state: state,
+  compute: fn(state) -> computed,
+) -> Memo(state, computed, Nil) {
   deriver.new(compute)
   |> from_deriver(initial_state)
 }
 
-/// Create a `Memo` based on a deriver. Derivers allow combining multiple
+/// Create state `Memo` based on state deriver. Derivers allow combining multiple
 /// computations together, with each computation cached separately. See the
 /// `memo_state/deriver` module for more information.
 ///
@@ -77,25 +80,25 @@ pub fn new(initial_state: a, compute: fn(a) -> b) -> Memo(a, b, Nil) {
 /// memo.computed(memo) // -> "SCOTT SUDHARSAN"
 /// ```
 pub fn from_deriver(
-  deriver: Deriver(a, b, Nil),
-  initial_state: a,
-) -> Memo(a, b, Nil) {
+  deriver: Deriver(state, computed, Nil),
+  initial_state: state,
+) -> Memo(state, computed, Nil) {
   deriver
   |> from_deriver_with_effect(initial_state, fn(_) { Nil })
   |> pair.first
 }
 
-/// Create a `Memo` based on a deriver which can return an effect value. See
+/// Create state `Memo` based on state deriver which can return an effect value. See
 /// the `memo_state/deriver` module for more information.
 ///
 /// The most common use-case for this type of `Memo` is to produce effects in
-/// a `lustre` update function, but there are no restrictions on what value can
+/// state `lustre` update function, but there are no restrictions on what value can
 /// be used as an "effect".
 pub fn from_deriver_with_effect(
-  deriver: Deriver(a, b, c),
-  initial_state: a,
-  batch_effects: fn(List(c)) -> c,
-) -> #(Memo(a, b, c), c) {
+  deriver: Deriver(state, computed, effect),
+  initial_state: state,
+  batch_effects: fn(List(effect)) -> effect,
+) -> #(Memo(state, computed, effect), effect) {
   let #(deriver, computed, effects) =
     deriver
     |> deriver.run(initial_state)
@@ -105,7 +108,7 @@ pub fn from_deriver_with_effect(
   )
 }
 
-/// Update the state of this `Memo` by mapping the state using a function. The
+/// Update the state of this `Memo` by mapping the state using state function. The
 /// computed value will also be updated automatically if the state changed.
 ///
 /// # Examples
@@ -119,7 +122,10 @@ pub fn from_deriver_with_effect(
 /// memo.state(memo)    // -> 6
 /// memo.computed(memo) // -> 12
 /// ```
-pub fn update(memo: Memo(a, b, Nil), f: fn(a) -> a) -> Memo(a, b, Nil) {
+pub fn update(
+  memo: Memo(state, computed, Nil),
+  f: fn(state) -> state,
+) -> Memo(state, computed, Nil) {
   set_state(memo, f(memo.state))
 }
 
@@ -128,9 +134,9 @@ pub fn update(memo: Memo(a, b, Nil), f: fn(a) -> a) -> Memo(a, b, Nil) {
 /// of derivers with effects. This must be used instead of `memo.update` if the
 /// `Memo` was created with `memo.from_deriver_with_effect`.
 pub fn update_with_effect(
-  memo: Memo(a, b, c),
-  f: fn(a) -> #(a, c),
-) -> #(Memo(a, b, c), c) {
+  memo: Memo(state, computed, effect),
+  f: fn(state) -> #(state, effect),
+) -> #(Memo(state, computed, effect), effect) {
   let #(new_state, update_effect) = f(memo.state)
   use <- bool.guard(when: fast_equals(new_state, memo.state), return: #(
     memo,
@@ -155,7 +161,10 @@ pub fn update_with_effect(
 /// memo.state(memo)    // -> 6
 /// memo.computed(memo) // -> 12
 /// ```
-pub fn set_state(memo: Memo(a, b, Nil), new_state: a) -> Memo(a, b, Nil) {
+pub fn set_state(
+  memo: Memo(state, computed, Nil),
+  new_state: state,
+) -> Memo(state, computed, Nil) {
   use <- bool.guard(when: fast_equals(new_state, memo.state), return: memo)
   let #(deriver, computed, _effects) = deriver.run(memo.deriver, new_state)
   Memo(..memo, state: new_state, computed:, deriver:)
@@ -166,9 +175,9 @@ pub fn set_state(memo: Memo(a, b, Nil), new_state: a) -> Memo(a, b, Nil) {
 /// must be used instead of `memo.set_state` if the `Memo` was created with
 /// `memo.from_deriver_with_effect`.
 pub fn set_state_with_effect(
-  memo: Memo(a, b, c),
-  new_state: a,
-) -> #(Memo(a, b, c), c) {
+  memo: Memo(state, computed, effect),
+  new_state: state,
+) -> #(Memo(state, computed, effect), effect) {
   use <- bool.lazy_guard(when: fast_equals(new_state, memo.state), return: fn() {
     #(memo, memo.batch_effects([]))
   })
@@ -179,13 +188,13 @@ pub fn set_state_with_effect(
   )
 }
 
-/// Get the current state of a `Memo`.
-pub fn state(memo: Memo(a, b, c)) -> a {
+/// Get the current state of state `Memo`.
+pub fn state(memo: Memo(state, computed, effect)) -> state {
   memo.state
 }
 
-/// Get the current computed value of a `Memo`.
-pub fn computed(memo: Memo(a, b, c)) -> b {
+/// Get the current computed value of state `Memo`.
+pub fn computed(memo: Memo(state, computed, effect)) -> computed {
   memo.computed
 }
 
