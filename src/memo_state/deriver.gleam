@@ -161,9 +161,7 @@ fn new_helper(
 /// let name_deriver: Deriver(Person, String, Nil) =
 ///   deriver.selecting(
 ///     fn(person: Person) { person.name },
-///     deriver.new(fn(name: String) {
-///       string.uppercase(name)
-///     }),
+///     deriver.new(fn(name: String) { string.uppercase(name) }),
 ///   )
 ///
 /// let memo = memo.from_deriver(name_deriver, Person(name: "Keerthy"))
@@ -318,9 +316,9 @@ fn chain_helper(
 /// ```gleam
 /// let length_deriver: Deriver(String, Int, List(String)) =
 ///   deriver.new(string.length)
-///   |> deriver.chain_effect(deriver.effect(fn(length) {
-///     ["Length is " <> int.to_string(length)]
-///   }))
+///   |> deriver.chain_effect(
+///     deriver.effect(fn(length) { ["Length is " <> int.to_string(length)] }),
+///   )
 ///
 /// let #(memo, effect) =
 ///   memo.from_deriver_with_effect(length_deriver, "ABC", list.flatten)
@@ -410,13 +408,9 @@ pub fn add_deriver(
 ///   })
 ///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * x })))
 ///   |> deriver.add_deriver(deriver.new(list.map(_, fn(x) { x * 2 })))
-///   |> deriver.add_effect(
-///     deriver.selecting(
-///       fn(list) { result.unwrap(list.first(list), 0) },
-///       deriver.effect(fn(first) {
-///         ["First element: " <> int.to_string(first)]
-///       }),
-///     ),
+///   |> deriver.add_effect(deriver.selecting(
+///     fn(list) { result.unwrap(list.first(list), 0) },
+///     deriver.effect(fn(first) { ["First element: " <> int.to_string(first)] })),
 ///   )
 ///
 /// let #(memo, effect) =

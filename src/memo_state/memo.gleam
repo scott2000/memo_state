@@ -28,13 +28,13 @@ pub opaque type Memo(state, computed, effect) {
 /// memo.state(memo)    // -> 0
 /// memo.computed(memo) // -> 0
 ///
-/// let memo = memo.set_state(memo, 12)
-/// memo.state(memo)    // -> 12
-/// memo.computed(memo) // -> 144
-///
-/// let memo = memo.update(memo, int.divide(_, 2))
+/// let memo = memo.set_state(memo, 6)
 /// memo.state(memo)    // -> 6
 /// memo.computed(memo) // -> 36
+///
+/// let memo = memo.update(memo, int.multiply(_, 2))
+/// memo.state(memo)    // -> 12
+/// memo.computed(memo) // -> 144
 /// ```
 pub fn new(
   initial_state: state,
@@ -69,15 +69,15 @@ pub fn new(
 ///
 /// // Prints "Recomputing full name..."
 /// let memo = memo.from_deriver(full_name_deriver, initial_person)
-/// memo.computed(memo) // -> "KEERTHY SUDHARSAN"
+/// memo.computed(memo) // -> "Keerthy Sudharsan"
 ///
 /// // Doesn't print anything since result is cached
 /// let memo = memo.update(memo, fn(p) { Person(..p, age: 25) })
-/// memo.computed(memo) // -> "KEERTHY SUDHARSAN"
+/// memo.computed(memo) // -> "Keerthy Sudharsan"
 ///
 /// // Prints "Recomputing full name..."
 /// let memo = memo.update(memo, fn(p) { Person(..p, first_name: "Scott") })
-/// memo.computed(memo) // -> "SCOTT SUDHARSAN"
+/// memo.computed(memo) // -> "Scott Sudharsan"
 /// ```
 pub fn from_deriver(
   deriver: Deriver(state, computed, Nil),
