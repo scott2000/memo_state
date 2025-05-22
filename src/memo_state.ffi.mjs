@@ -1,4 +1,4 @@
-import { CustomType } from "../gleam.mjs";
+import { CustomType } from "./gleam.mjs";
 
 export function refEquals(a, b) {
   return a === b;
@@ -25,6 +25,10 @@ export function shallowEquals(a, b) {
     return a.constructor === b.constructor && isEmpty(a) && isEmpty(b);
   }
   return false;
+}
+
+export function callEq(eq, a, b) {
+  return eq(a, b);
 }
 
 function isEmpty(object) {

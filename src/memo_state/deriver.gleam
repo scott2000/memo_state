@@ -141,7 +141,7 @@ fn new_helper(
   compute: fn(input) -> #(output, List(effect)),
 ) -> Deriver(input, output, effect) {
   use input, eq <- Deriver
-  case eq(dynamic.from(input), dynamic.from(prev_input)) {
+  case call_eq(eq, input, prev_input) {
     True -> Unchanged(prev_output)
     False -> {
       let #(output, effects) = compute(input)
@@ -584,16 +584,22 @@ fn map_next(
   }
 }
 
-@external(javascript, "./deriver.ffi.mjs", "refEquals")
+@external(javascript, "../memo_state.ffi.mjs", "refEquals")
 fn reference_equality(a: a, b: a) -> Bool {
   a == b
 }
 
-@external(javascript, "./deriver.ffi.mjs", "shallowEquals")
+@external(javascript, "../memo_state.ffi.mjs", "shallowEquals")
 fn shallow_equality(a: a, b: a) -> Bool {
   a == b
 }
 
 fn deep_equality(a: a, b: a) -> Bool {
+  a == b
+}
+
+@external(erlang, "memo_state_ffi", "call_eq")
+@external(javascript, "../memo_state.ffi.mjs", "callEq")
+fn call_eq(_eq: fn(Dynamic, Dynamic) -> Bool, a: a, b: a) -> Bool {
   a == b
 }

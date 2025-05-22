@@ -198,7 +198,7 @@ pub fn computed(memo: Memo(state, computed, effect)) -> computed {
   memo.computed
 }
 
-@external(javascript, "./deriver.ffi.mjs", "shallowEquals")
+@external(javascript, "../memo_state.ffi.mjs", "shallowEquals")
 fn fast_equals(_a: a, _b: a) -> Bool {
   False
 }
